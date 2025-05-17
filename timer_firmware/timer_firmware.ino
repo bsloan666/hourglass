@@ -46,11 +46,12 @@ int curr_switch;
 int prev_switch;
 unsigned long start_time = 0;
 unsigned long duration = 0;
+int state;
 
 enum states {
-  TIMING,
+  TIMING = 1,
   SLEEPING,
-  SETTING,
+  SETTING
 };
 
 
@@ -118,7 +119,7 @@ void draw_time(unsigned long in_millis, int flash) {
 
 void mark_start(unsigned long delay){
   start_time = millis();
-  timing = 1;
+  set_state(TIMING);
   beep();
 }
 
@@ -128,33 +129,40 @@ int get_state(){
 
 void set_state(int in_state){
   state = in_state;
+  dump_state();
 }
-
-
-void setup() {
-  // Clear the display:
-  Serial.begin(9600);
-  display.clear();
-  pinMode(8, OUTPUT);
-  pinMode(5, INPUT);
+void greet(){
   delay(1000);
-  display.setBrightness(7);
-  // All segments on:
+  display.setBrightness(0);
   display.setSegments(hello);
-  delay(2000);
-  display.clear();
-  delay(1000);
+  int i;
+  for(i = 0; i < 8; i++){
+    display.setBrightness(i);
+    delay(100);
+  }
   alert();
-}
-void announce_time(){
-  timing = 0;
-  duration = 0;
-  encoder.readAndReset();
-  display.setSegments(done);
-  alarm();
   delay(3000);
   display.clear();
-  delay(1000);
+  set_state(SETTING);
+}
+
+void sleep(){
+  duration = 0;
+  encoder.readAndReset();
+  set_state(SLEEPING);
+}
+void cancel(){
+  alert();
+  display.setSegments(bye);
+  delay(3000);
+  sleep();
+}
+
+void announce_time(){
+  duration = 0;
+  display.setSegments(done);
+  alarm();
+  sleep();
 }
 
 void dump_switch(){
@@ -165,12 +173,31 @@ void dump_encoder(){
   Serial.print(", ENCODER: ");
   Serial.println(curr_enc);
 }
+void dump_state(){
+  Serial.print("STATE: ");
+  if(state == TIMING){
+    Serial.println("TIMING");
+  } else if(state == SETTING){
+    Serial.println("SETTING");
+  } else if(state == SLEEPING){
+    Serial.println("SLEEPING");
+  }
+}
+
+void setup() {
+  Serial.begin(9600);
+  display.clear();
+  pinMode(8, OUTPUT);
+  pinMode(5, INPUT);
+  greet();
+}
 
 void loop() {
   curr_switch = analogRead(A4);
   curr_enc = encoder.read();
   unsigned long timestamp = millis();
-  if(timing) {
+  int state = get_state();
+  if(state == TIMING) {
     unsigned long test = timestamp - start_time;
     if(test > duration){
       announce_time();
@@ -179,16 +206,14 @@ void loop() {
     }
   } else if(curr_switch > 1 && 
             curr_switch < 10){
-    if(duration > 0){
+    if(duration > 0 && state == SETTING){
       dump_switch();
       mark_start(timestamp);
-    } else {
+    } else if(state == SLEEPING){
       dump_switch();
-      display.setSegments(hello);
-      delay(3000);
-      display.clear();
+      greet();
     }
-  } else if(curr_enc != prev_enc){
+  } else if(curr_enc != prev_enc && state == SETTING){
     duration = curr_enc * 60000;
     if(curr_enc > 120){
         duration = 7200000;

@@ -42,11 +42,22 @@ const uint8_t bye[] = {
 
 int curr_enc;
 int prev_enc;
-int curr_switch;
-int prev_switch;
+volatile int curr_switch;
+volatile int prev_switch;
 unsigned long start_time = 0;
 unsigned long duration = 0;
 int state;
+int button_pressed = 0;
+float c_1 = 261.63;
+float d_1 = 293.66;
+float e_1 = 329.63;
+float f_1 = 349.23;
+float g_1 = 392.00;
+float a_1 = 440.00;
+float b_1 = 493.88;
+float c_2 = 523.25;
+
+
 
 enum states {
   TIMING = 1,
@@ -56,6 +67,18 @@ enum states {
 
 
 Encoder encoder(2, 3);
+
+void note(float note, unsigned int length) {
+  int i;
+  unsigned long musecs = 1000000 / note * 0.5;
+  for (i = 0; i < length; i++) {
+    digitalWrite(8, HIGH);
+    delayMicroseconds(musecs);
+    digitalWrite(8, LOW);
+    delayMicroseconds(musecs);
+  }
+}
+
 
 void beep() {
   int i;
@@ -82,6 +105,17 @@ void alarm() {
       delay(4);
     }
   }  
+}
+
+void scale() {
+  note(c_1, 100);
+  note(d_1, 100);
+  note(e_1, 100);
+  note(f_1, 100);
+  note(g_1, 100);
+  note(a_1, 100);
+  note(b_1, 100);
+  note(c_2, 400);
 }
 
 void alert() {
@@ -140,7 +174,7 @@ void greet(){
     display.setBrightness(i);
     delay(100);
   }
-  alert();
+  scale();
   delay(3000);
   display.clear();
   set_state(SETTING);
@@ -149,6 +183,7 @@ void greet(){
 void sleep(){
   duration = 0;
   encoder.readAndReset();
+  display.clear();
   set_state(SLEEPING);
 }
 void cancel(){
@@ -170,7 +205,7 @@ void dump_switch(){
   Serial.println(curr_switch);
 }
 void dump_encoder(){
-  Serial.print(", ENCODER: ");
+  Serial.print("ENCODER: ");
   Serial.println(curr_enc);
 }
 void dump_state(){
@@ -188,12 +223,13 @@ void setup() {
   Serial.begin(9600);
   display.clear();
   pinMode(8, OUTPUT);
-  pinMode(5, INPUT);
+  pinMode(12, INPUT_PULLUP);
+  PCICR = B00000001;
+  PCMSK0 = B00010000;
   greet();
 }
 
 void loop() {
-  curr_switch = analogRead(A4);
   curr_enc = encoder.read();
   unsigned long timestamp = millis();
   int state = get_state();
@@ -204,27 +240,40 @@ void loop() {
     } else {
       draw_time((duration - test) + 60000, timestamp % 500 < 250);
     }
-  } else if(curr_switch > 1 && 
-            curr_switch < 10){
-    if(duration > 0 && state == SETTING){
-      dump_switch();
+  } else if(state == SETTING){
+    if(curr_enc != prev_enc){
+      duration = curr_enc * 60000;
+      if(curr_enc > 120){
+          duration = 7200000;
+      }
+      if(curr_enc < 0){
+          duration = 60000;
+      }
+      dump_encoder();
+      draw_time(duration, 1);
+    } else if(button_pressed){
       mark_start(timestamp);
-    } else if(state == SLEEPING){
+      button_pressed = 0;
       dump_switch();
+    } 
+  } else if(state == SLEEPING){
+    if(button_pressed){
       greet();
+      button_pressed = 0;
+      dump_switch();
     }
-  } else if(curr_enc != prev_enc && state == SETTING){
-    duration = curr_enc * 60000;
-    if(curr_enc > 120){
-        duration = 7200000;
-    }
-    if(curr_enc < 0){
-        duration = 60000;
-    }
-    dump_encoder();
-    draw_time(duration, 1);
-  }  
+  } 
   prev_switch = curr_switch;
   prev_enc = curr_enc;
   delay(20);
+}
+
+ISR (PCINT0_vect) {
+  curr_switch = digitalRead(12);
+  if(curr_switch != prev_switch){
+    if(curr_switch < prev_switch){
+      button_pressed = 1;
+    }
+  }
+  prev_switch = curr_switch;
 }

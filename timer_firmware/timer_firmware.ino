@@ -2,7 +2,6 @@
 
 // Include the library:
 #include "TM1637Display.h"
-#include <Encoder.h>
 
 
 // Define the connections pins:
@@ -40,14 +39,64 @@ const uint8_t bye[] = {
   0x00                                             // 
 };
 
-int curr_enc;
-int prev_enc;
+class ButtonChoice {
+  private:
+    unsigned int pin;
+    unsigned int index;
+    unsigned int samples[4];
+    unsigned int thresholds[4];
+    unsigned int n_thresholds;
+
+  public:
+    ButtonChoice(unsigned int _pin):
+      pin(_pin), index(0), n_thresholds(0){}
+
+    void add_button(unsigned int thresh){
+      thresholds[n_thresholds] = thresh;
+      n_thresholds++;
+      if(n_thresholds > 4){
+        Serial.println("ERROR: Cannot allocate more than 4 buttons!");
+      }
+    }
+    void sample(){
+      samples[index] = analogRead(pin);
+      //Serial.println(samples[index]);
+      index++;
+      index %= 4;
+    }
+    unsigned int get(){
+      unsigned int i;
+      unsigned int j;
+      unsigned int hits[4] = {0, 0, 0, 0};
+      for(j = 0; j < n_thresholds; j++){
+        for(i = 0; i < 4; i++){        
+           if(abs(samples[i] - thresholds[j]) < 10){
+             hits[j]++;
+           }
+        }
+        if(hits[j] > 3){
+          return j + 1;
+        }
+      }
+      return 0;
+    }
+};
+
 volatile int curr_switch;
 volatile int prev_switch;
 unsigned long start_time = 0;
 unsigned long duration = 0;
 int state;
-int button_pressed = 0;
+unsigned int button;
+ButtonChoice buttons(A4);
+
+
+
+float e_0 = 329.63/2;
+float f_0 = 349.23/2;
+float g_0 = 392.00/2;
+float a_0 = 440.00/2;
+float b_0 = 493.88/2;
 float c_1 = 261.63;
 float d_1 = 293.66;
 float e_1 = 329.63;
@@ -57,6 +106,10 @@ float a_1 = 440.00;
 float b_1 = 493.88;
 float c_2 = 523.25;
 
+struct {
+  float pitch;
+  unsigned int length;
+} Note;
 
 
 enum states {
@@ -66,16 +119,17 @@ enum states {
 };
 
 
-Encoder encoder(2, 3);
 
-void note(float note, unsigned int length) {
+void note(float pitch, unsigned int length) {
   int i;
-  unsigned long musecs = 1000000 / note * 0.5;
-  for (i = 0; i < length; i++) {
+  unsigned int accum = 0;
+  unsigned long musecs = 1000000 / pitch * 0.5;
+  while(accum < length) {
     digitalWrite(8, HIGH);
     delayMicroseconds(musecs);
     digitalWrite(8, LOW);
     delayMicroseconds(musecs);
+    accum += musecs/1000;
   }
 }
 
@@ -89,6 +143,13 @@ void beep() {
     delay(1);
   }
 }
+
+void bach_1() {
+  note(g_0, 128); note(c_1, 64); note(d_1, 64); note(e_1, 128); note(e_1, 128);
+  note(d_1, 128); note(f_1, 128); note(e_1, 128); note(g_0, 128); note(f_0, 128); 
+  note(e_1, 64);  note(c_1, 64); note(d_1, 128); note(f_0, 128); note(e_0, 128);  
+  note(b_0, 128); note(c_1, 128);
+};
 
 void alarm() {
   int i;
@@ -151,10 +212,10 @@ void draw_time(unsigned long in_millis, int flash) {
   display.showNumberDecEx(dec_time, colon, false, 4, 0);
 }
 
-void mark_start(unsigned long delay){
+void mark_start(){
   start_time = millis();
   set_state(TIMING);
-  beep();
+  alert();
 }
 
 int get_state(){
@@ -174,7 +235,7 @@ void greet(){
     display.setBrightness(i);
     delay(100);
   }
-  scale();
+  bach_1();
   delay(3000);
   display.clear();
   set_state(SETTING);
@@ -182,7 +243,6 @@ void greet(){
 
 void sleep(){
   duration = 0;
-  encoder.readAndReset();
   display.clear();
   set_state(SLEEPING);
 }
@@ -200,14 +260,11 @@ void announce_time(){
   sleep();
 }
 
-void dump_switch(){
-  Serial.print("SWITCH: ");
-  Serial.println(curr_switch);
+void dump_button(unsigned int val){
+  Serial.print("BUTTON: ");
+  Serial.println(val);
 }
-void dump_encoder(){
-  Serial.print("ENCODER: ");
-  Serial.println(curr_enc);
-}
+
 void dump_state(){
   Serial.print("STATE: ");
   if(state == TIMING){
@@ -223,16 +280,20 @@ void setup() {
   Serial.begin(9600);
   display.clear();
   pinMode(8, OUTPUT);
-  pinMode(12, INPUT_PULLUP);
-  PCICR = B00000001;
-  PCMSK0 = B00010000;
   greet();
+  buttons.add_button(254);
+  buttons.add_button(506);
+  buttons.add_button(759);
 }
 
 void loop() {
-  curr_enc = encoder.read();
+  buttons.sample();
+  //
   unsigned long timestamp = millis();
   int state = get_state();
+  unsigned int selection = buttons.get();
+
+  //dump_button(selection);
   if(state == TIMING) {
     unsigned long test = timestamp - start_time;
     if(test > duration){
@@ -240,40 +301,26 @@ void loop() {
     } else {
       draw_time((duration - test) + 60000, timestamp % 500 < 250);
     }
-  } else if(state == SETTING){
-    if(curr_enc != prev_enc){
-      duration = curr_enc * 60000;
-      if(curr_enc > 120){
-          duration = 7200000;
-      }
-      if(curr_enc < 0){
-          duration = 60000;
-      }
-      dump_encoder();
-      draw_time(duration, 1);
-    } else if(button_pressed){
-      mark_start(timestamp);
-      button_pressed = 0;
-      dump_switch();
-    } 
+  } else if(state == SETTING){   
+    if(selection == 1) {
+       duration += 60000;
+    } else if(selection == 2){ 
+       duration -= 60000;
+    } else if(selection == 3){ 
+       mark_start();
+    }
+    if(duration < 60000 ){
+      duration = 60000;
+    }
+    draw_time(duration, 1);
+    delay(20);
+    
   } else if(state == SLEEPING){
-    if(button_pressed){
+    if(button == 3){
       greet();
-      button_pressed = 0;
-      dump_switch();
     }
   } 
-  prev_switch = curr_switch;
-  prev_enc = curr_enc;
-  delay(20);
+
+  //delay(20);
 }
 
-ISR (PCINT0_vect) {
-  curr_switch = digitalRead(12);
-  if(curr_switch != prev_switch){
-    if(curr_switch < prev_switch){
-      button_pressed = 1;
-    }
-  }
-  prev_switch = curr_switch;
-}

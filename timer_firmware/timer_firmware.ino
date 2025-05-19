@@ -42,14 +42,14 @@ const uint8_t bye[] = {
 class ButtonChoice {
   private:
     unsigned int pin;
-    unsigned int index;
-    unsigned int samples[4];
     unsigned int thresholds[4];
     unsigned int n_thresholds;
 
   public:
     ButtonChoice(unsigned int _pin):
-      pin(_pin), index(0), n_thresholds(0){}
+      pin(_pin), n_thresholds(1){
+        thresholds[0] = 100;
+      }
 
     void add_button(unsigned int thresh){
       thresholds[n_thresholds] = thresh;
@@ -58,27 +58,15 @@ class ButtonChoice {
         Serial.println("ERROR: Cannot allocate more than 4 buttons!");
       }
     }
-    void sample(){
-      samples[index] = analogRead(pin);
-      //Serial.println(samples[index]);
-      index++;
-      index %= 4;
-    }
+    
     unsigned int get(){
+      unsigned int sample = analogRead(pin);
       unsigned int i;
-      unsigned int j;
-      unsigned int hits[4] = {0, 0, 0, 0};
-      for(j = 0; j < n_thresholds; j++){
-        for(i = 0; i < 4; i++){        
-           if(abs(samples[i] - thresholds[j]) < 10){
-             hits[j]++;
-           }
-        }
-        if(hits[j] > 3){
-          return j + 1;
-        }
+      for(i = 0; i < n_thresholds; i++){
+         if(sample < thresholds[i]){
+           return i;
+         }
       }
-      return 0;
     }
 };
 
@@ -92,19 +80,19 @@ ButtonChoice buttons(A4);
 
 
 
-float e_0 = 329.63/2;
-float f_0 = 349.23/2;
-float g_0 = 392.00/2;
-float a_0 = 440.00/2;
-float b_0 = 493.88/2;
-float c_1 = 261.63;
-float d_1 = 293.66;
-float e_1 = 329.63;
-float f_1 = 349.23;
-float g_1 = 392.00;
-float a_1 = 440.00;
-float b_1 = 493.88;
-float c_2 = 523.25;
+const float e_0 = 329.63/2;
+const float f_0 = 349.23/2;
+const float g_0 = 392.00/2;
+const float a_0 = 440.00/2;
+const float b_0 = 493.88/2;
+const float c_1 = 261.63;
+const float d_1 = 293.66;
+const float e_1 = 329.63;
+const float f_1 = 349.23;
+const float g_1 = 392.00;
+const float a_1 = 440.00;
+const float b_1 = 493.88;
+const float c_2 = 523.25;
 
 struct {
   float pitch;
@@ -282,12 +270,11 @@ void setup() {
   pinMode(8, OUTPUT);
   greet();
   buttons.add_button(254);
-  buttons.add_button(506);
-  buttons.add_button(759);
+  buttons.add_button(600);
+  buttons.add_button(1000);
 }
 
 void loop() {
-  buttons.sample();
   //
   unsigned long timestamp = millis();
   int state = get_state();
@@ -304,8 +291,11 @@ void loop() {
   } else if(state == SETTING){   
     if(selection == 1) {
        duration += 60000;
+       delay(100);
+       note(c_1 * 2, )
     } else if(selection == 2){ 
        duration -= 60000;
+       delay(100);
     } else if(selection == 3){ 
        mark_start();
     }
@@ -313,10 +303,10 @@ void loop() {
       duration = 60000;
     }
     draw_time(duration, 1);
-    delay(20);
+    
     
   } else if(state == SLEEPING){
-    if(button == 3){
+    if(selection == 3){
       greet();
     }
   } 

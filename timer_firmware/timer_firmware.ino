@@ -78,8 +78,6 @@ int state;
 unsigned int button;
 ButtonChoice buttons(A4);
 
-
-
 const float e_0 = 329.63/2;
 const float f_0 = 349.23/2;
 const float g_0 = 392.00/2;
@@ -94,10 +92,12 @@ const float a_1 = 440.00;
 const float b_1 = 493.88;
 const float c_2 = 523.25;
 
-struct {
-  float pitch;
-  unsigned int length;
-} Note;
+class Note {
+  public:
+   float pitch;
+   unsigned long length;
+   Note(float _p, unsigned long _l): pitch(_p), length(_l){} 
+};
 
 
 enum states {
@@ -107,36 +107,59 @@ enum states {
 };
 
 
-
-void note(float pitch, unsigned int length) {
+void melody(Note notes[], unsigned int count) {
   int i;
-  unsigned int accum = 0;
-  unsigned long musecs = 1000000 / pitch * 0.5;
-  while(accum < length) {
-    digitalWrite(8, HIGH);
-    delayMicroseconds(musecs);
-    digitalWrite(8, LOW);
-    delayMicroseconds(musecs);
-    accum += musecs/1000;
+  unsigned long accum;
+  unsigned long musecs;
+  noInterrupts();
+  for(i = 0; i < count; i++){ 
+      accum = 0;     
+      musecs = 1000000 / notes[i].pitch * 0.5;
+      while(accum < notes[i].length * 1000) {
+        digitalWrite(8, HIGH);
+        delayMicroseconds(musecs);
+        digitalWrite(8, LOW);
+        delayMicroseconds(musecs);
+        accum += musecs;
+      }
   }
+  interrupts();
 }
 
 
-void beep() {
+void up_beep() {
   int i;
-  for (i = 0; i < 50; i++) {
+  for (i = 0; i < 30; i++) {
     digitalWrite(8, HIGH);
-    delay(1);
+    delayMicroseconds(500);
     digitalWrite(8, LOW);
-    delay(1);
+    delayMicroseconds(500);
   }
 }
 
-void bach_1() {
-  note(g_0, 128); note(c_1, 64); note(d_1, 64); note(e_1, 128); note(e_1, 128);
-  note(d_1, 128); note(f_1, 128); note(e_1, 128); note(g_0, 128); note(f_0, 128); 
-  note(e_1, 64);  note(c_1, 64); note(d_1, 128); note(f_0, 128); note(e_0, 128);  
-  note(b_0, 128); note(c_1, 128);
+void down_beep() {
+  int i;
+  for (i = 0; i < 10; i++) {
+    digitalWrite(8, HIGH);
+    delayMicroseconds(2000);
+    digitalWrite(8, LOW);
+    delayMicroseconds(2000);
+  }
+}
+
+Note bach_1[17] = {
+  Note(g_0, 128), Note(c_1, 64), Note(d_1, 64), Note(e_1, 128), Note(e_1, 128),
+  Note(d_1, 128), Note(f_1, 128), Note(e_1, 128), Note(g_0, 128), Note(f_0, 128), 
+  Note(e_1, 64),  Note(c_1, 64), Note(d_1, 128), Note(f_0, 128), Note(e_0, 128),  
+  Note(b_0, 128), Note(c_1, 128)
+};
+
+Note bach_2[23] = {
+  Note(g_1, 128), Note(g_1, 256), Note(f_1, 64), Note(e_1, 64), Note(d_1, 64), 
+  Note(c_1, 64), Note(d_1, 64), Note(c_1, 64), Note(b_0, 64),  Note(a_0, 64),
+  Note(g_0, 128), Note(a_0, 64), Note(b_0, 64), Note(c_1, 64), Note(d_1, 64),
+  Note(e_1, 64), Note(c_1, 64), Note(f_1, 64), Note(e_1, 64), Note(d_1, 64),
+  Note(c_1, 64), Note(e_1, 128), Note(d_1, 128)
 };
 
 void alarm() {
@@ -156,16 +179,7 @@ void alarm() {
   }  
 }
 
-void scale() {
-  note(c_1, 100);
-  note(d_1, 100);
-  note(e_1, 100);
-  note(f_1, 100);
-  note(g_1, 100);
-  note(a_1, 100);
-  note(b_1, 100);
-  note(c_2, 400);
-}
+
 
 void alert() {
   int i;
@@ -223,7 +237,7 @@ void greet(){
     display.setBrightness(i);
     delay(100);
   }
-  bach_1();
+  melody(bach_1, 17);
   delay(3000);
   display.clear();
   set_state(SETTING);
@@ -244,7 +258,7 @@ void cancel(){
 void announce_time(){
   duration = 0;
   display.setSegments(done);
-  alarm();
+  melody(bach_2, 23);
   sleep();
 }
 
@@ -291,10 +305,11 @@ void loop() {
   } else if(state == SETTING){   
     if(selection == 1) {
        duration += 60000;
+       up_beep();
        delay(100);
-       note(c_1 * 2, )
     } else if(selection == 2){ 
        duration -= 60000;
+       down_beep();
        delay(100);
     } else if(selection == 3){ 
        mark_start();
@@ -307,6 +322,7 @@ void loop() {
     
   } else if(state == SLEEPING){
     if(selection == 3){
+      up_beep();
       greet();
     }
   } 

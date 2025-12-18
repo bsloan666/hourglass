@@ -61,12 +61,14 @@ class ButtonChoice {
     
     unsigned int get(){
       unsigned int sample = analogRead(pin);
-      unsigned int i;
+      Serial.println(sample);
+      unsigned int i = 0;
       for(i = 0; i < n_thresholds; i++){
          if(sample < thresholds[i]){
            return i;
          }
       }
+      return i;
     }
 };
 
@@ -285,7 +287,7 @@ void setup() {
   greet();
   buttons.add_button(254);
   buttons.add_button(600);
-  buttons.add_button(1000);
+  buttons.add_button(1024);
 }
 
 void loop() {
@@ -294,7 +296,7 @@ void loop() {
   int state = get_state();
   unsigned int selection = buttons.get();
 
-  //dump_button(selection);
+  dump_button(selection);
   if(state == TIMING) {
     unsigned long test = timestamp - start_time;
     if(test > duration){
@@ -318,7 +320,7 @@ void loop() {
       duration = 60000;
     }
     draw_time(duration, 1);
-    
+            
     
   } else if(state == SLEEPING){
     if(selection == 3){
